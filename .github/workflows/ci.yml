@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      RESOLVEAI_LLM_PROVIDER: fake
+      RESOLVEAI_EMBEDDING_PROVIDER: fake
+      RESOLVEAI_VECTOR_STORE: memory
+      PYTHONPATH: ${{ github.workspace }}/src:${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Lint
+        run: ruff check src tests evals
+
+      - name: Format check
+        run: ruff format --check src tests evals
+
+      - name: Unit tests
+        run: pytest tests/unit -q
+
+      - name: Integration tests (spawns real MCP subprocesses)
+        run: pytest tests/integration -q
+
+      - name: Eval report (informational)
+        run: python -m evals.run_evals >> "$GITHUB_STEP_SUMMARY"

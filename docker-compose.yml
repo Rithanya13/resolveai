@@ -1,0 +1,38 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      RESOLVEAI_LLM_PROVIDER: ${RESOLVEAI_LLM_PROVIDER:-fake}
+      RESOLVEAI_ANTHROPIC_API_KEY: ${RESOLVEAI_ANTHROPIC_API_KEY:-}
+      RESOLVEAI_EMBEDDING_PROVIDER: ${RESOLVEAI_EMBEDDING_PROVIDER:-fake}
+      RESOLVEAI_AZURE_OPENAI_ENDPOINT: ${RESOLVEAI_AZURE_OPENAI_ENDPOINT:-}
+      RESOLVEAI_AZURE_OPENAI_API_KEY: ${RESOLVEAI_AZURE_OPENAI_API_KEY:-}
+      # Set to `pgvector` (and start the `postgres` service below) for a
+      # production-shaped local run; defaults to the in-memory store so
+      # `docker compose up` works with zero configuration.
+      RESOLVEAI_VECTOR_STORE: ${RESOLVEAI_VECTOR_STORE:-memory}
+      RESOLVEAI_DATABASE_URL: postgresql://resolveai:resolveai@postgres:5432/resolveai
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: resolveai
+      POSTGRES_PASSWORD: resolveai
+      POSTGRES_DB: resolveai
+    ports:
+      - "5432:5432"
+    volumes:
+      - resolveai_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U resolveai"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  resolveai_pgdata:

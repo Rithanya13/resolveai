@@ -1,0 +1,6 @@
+# Optional: only needed when RESOLVEAI_VECTOR_STORE=pgvector (production mode).
+# Kept separate so the default install (fake/in-memory, used by tests and CI)
+# doesn't need a Postgres client library at all.
+-r requirements.txt
+psycopg[binary]>=3.1
+pgvector>=0.3

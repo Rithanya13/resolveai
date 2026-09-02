@@ -1,0 +1,17 @@
+[project]
+name = "resolveai"
+version = "0.1.0"
+description = "Agentic support/operations incident-resolution platform: LangGraph orchestration, hybrid RAG, MCP tools, confidence gating, human-in-the-loop escalation."
+requires-python = ">=3.11"  # langgraph's interrupt() requires 3.11+ in async contexts (see README)
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
