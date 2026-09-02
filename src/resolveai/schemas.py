@@ -7,12 +7,12 @@ gating, escalation) deterministic and testable instead of regex-parsing prose.
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
 
-class IncidentCategory(str, Enum):
+class IncidentCategory(StrEnum):
     ORDER_NOT_RECEIVED = "order_not_received"
     REFUND_REQUEST = "refund_request"
     ACCOUNT_ACCESS = "account_access"
@@ -71,7 +71,7 @@ class EvidenceAssessment(BaseModel):
     missing_evidence: list[str] = Field(default_factory=list)
 
 
-class ResolutionAction(str, Enum):
+class ResolutionAction(StrEnum):
     ISSUE_REFUND = "issue_refund"
     RESEND_ORDER = "resend_order"
     RESET_ACCOUNT_ACCESS = "reset_account_access"
