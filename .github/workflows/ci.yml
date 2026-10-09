@@ -69,3 +69,49 @@ jobs:
 
       - name: Production build
         run: npm run build
+
+  k8s:
+    # Real deploy to a throwaway Kubernetes cluster on every push:
+    # build both images, load them into kind, apply k8s/, wait for
+    # rollout, then run an end-to-end smoke test through the Services.
+    needs: [test, web]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build images
+        run: |
+          docker build -t resolveai-api:local .
+          docker build -t resolveai-web:local --build-arg NEXT_PUBLIC_API_URL=http://localhost:8000 web
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1.10.0
+        with:
+          cluster_name: resolveai
+
+      - name: Load images into the cluster
+        run: |
+          kind load docker-image resolveai-api:local --name resolveai
+          kind load docker-image resolveai-web:local --name resolveai
+
+      - name: Deploy
+        run: |
+          kubectl apply -k k8s/
+          kubectl -n resolveai rollout status deployment/api --timeout=180s
+          kubectl -n resolveai rollout status deployment/web --timeout=180s
+          kubectl -n resolveai get pods -o wide
+
+      - name: Smoke test through the Services
+        run: |
+          kubectl -n resolveai port-forward svc/api 8000:8000 > /tmp/pf-api.log 2>&1 &
+          kubectl -n resolveai port-forward svc/web 3000:3000 > /tmp/pf-web.log 2>&1 &
+          for i in $(seq 1 30); do curl -fs localhost:8000/health && curl -fs -o /dev/null localhost:3000/ && break; sleep 1; done
+          ./k8s/smoke-test.sh
+
+      - name: Diagnostics on failure
+        if: failure()
+        run: |
+          kubectl -n resolveai get all
+          kubectl -n resolveai describe pods
+          kubectl -n resolveai logs deployment/api --tail=200 || true
+          kubectl -n resolveai logs deployment/web --tail=100 || true

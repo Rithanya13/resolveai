@@ -1,0 +1,11 @@
+# Non-secret runtime config. API keys go in a Secret named `resolveai-secrets`
+# (optional, see README), never in this file.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resolveai-config
+data:
+  RESOLVEAI_LLM_PROVIDER: fake
+  RESOLVEAI_EMBEDDING_PROVIDER: fake
+  RESOLVEAI_VECTOR_STORE: memory
+  RESOLVEAI_CORS_ORIGINS: http://localhost:3000

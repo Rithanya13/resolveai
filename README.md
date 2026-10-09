@@ -76,6 +76,27 @@ docker compose up --build         # api on :8000 + operator console on :3000, fa
 RESOLVEAI_VECTOR_STORE=pgvector docker compose up --build   # + real Postgres/pgvector
 ```
 
+### Kubernetes
+
+Manifests live in `k8s/` (Kustomize): `api` and `web` Deployments + Services, startup/readiness/liveness probes on `/health`, CPU/memory requests and limits, non-root containers with all Linux capabilities dropped, config from a ConfigMap, API keys from an optional `resolveai-secrets` Secret, and an HPA + PodDisruptionBudget for the stateless console.
+
+```bash
+docker build -t resolveai-api:local .
+docker build -t resolveai-web:local web
+kind create cluster --name resolveai
+kind load docker-image resolveai-api:local resolveai-web:local --name resolveai
+
+kubectl apply -k k8s/
+kubectl -n resolveai rollout status deployment/api
+kubectl -n resolveai port-forward svc/api 8000:8000 &
+kubectl -n resolveai port-forward svc/web 3000:3000 &
+./k8s/smoke-test.sh                 # submit -> pause -> approve -> resolved, plus the console
+```
+
+CI does exactly this on every push (the `k8s` job): builds both images, deploys them to a fresh [kind](https://kind.sigs.k8s.io/) cluster, waits for rollout, and runs the smoke test through the Services.
+
+**Why the API runs one replica:** the LangGraph checkpointer is in-memory, so a paused incident lives in one pod. With two replicas, an approve call could land on a pod that never saw the incident. The console is stateless, so it scales (HPA, 2 to 5 pods). Scaling the API out needs a shared Postgres checkpointer first; that's on the roadmap.
+
 ### Going to real providers
 
 Copy `.env.example` to `.env` and set `RESOLVEAI_LLM_PROVIDER=anthropic` (+ an API key) and/or `RESOLVEAI_EMBEDDING_PROVIDER=azure_openai` (+ Azure OpenAI credentials). Nothing else changes — same graph, same routes, same tests structure.
@@ -148,8 +169,9 @@ This is a small, hand-curated regression suite that validates the graph's *routi
 - **Observability**: structured logging exists (`resolveai.graph` logger); LangSmith/Langfuse tracing is not yet wired in.
 - **MCP connection pooling**: `mcp_client.py` spawns one subprocess per tool call for correctness/simplicity; a pooled `AsyncExitStack`-based client would cut latency under load.
 - **Real knowledge base ingestion**: `knowledge_base/seed_docs.py` is static; a real deployment needs a sync pipeline from the actual docs source.
-- **Cloud deploy config**: Dockerized; a Terraform/Cloud Run or ECS config for an actual deployment isn't included yet.
+- **Shared checkpointer**: swap `InMemorySaver` for LangGraph's Postgres checkpointer so the API can run more than one replica (and survive pod restarts mid-review).
+- **Cloud deploy config**: Kubernetes manifests are tested on kind in CI; registry push, Ingress/TLS and a managed-cluster (GKE/EKS/AKS) overlay aren't included yet.
 
 ## Stack
 
-LangGraph (orchestration, structured routing, `interrupt()`-based HITL) · FastAPI · MCP (real tool servers, not mocked) · hybrid RAG (BM25 + vector + RRF) · Pydantic structured outputs · pgvector (production vector store option) · Next.js + React + TypeScript (operator console) · Docker Compose · GitHub Actions CI · pytest · Vitest
+LangGraph (orchestration, structured routing, `interrupt()`-based HITL) · FastAPI · MCP (real tool servers, not mocked) · hybrid RAG (BM25 + vector + RRF) · Pydantic structured outputs · pgvector (production vector store option) · Next.js + React + TypeScript (operator console) · Docker Compose · Kubernetes (Kustomize, tested on kind in CI) · GitHub Actions CI · pytest · Vitest

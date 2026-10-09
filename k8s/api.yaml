@@ -1,0 +1,83 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  labels:
+    app.kubernetes.io/name: resolveai-api
+spec:
+  # Single replica on purpose: the LangGraph checkpointer is in-memory, so a
+  # paused incident lives in one pod's memory. Two replicas behind a Service
+  # would route an approve call to a pod that has never seen the incident.
+  # Scaling out needs a shared checkpointer (Postgres) first -- see README.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: resolveai-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: resolveai-api
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: api
+          image: resolveai-api
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: resolveai-config
+            - secretRef:
+                name: resolveai-secrets
+                optional: true
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 768Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  labels:
+    app.kubernetes.io/name: resolveai-api
+spec:
+  selector:
+    app.kubernetes.io/name: resolveai-api
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
