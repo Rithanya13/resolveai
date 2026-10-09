@@ -64,11 +64,6 @@ export function ReviewPanel({
           <div>
             <strong>{humanize(pending.recommended_action)}</strong>
           </div>
-          {pending.proposed_customer_message && !compact && (
-            <blockquote className="quote" style={{ marginTop: 8 }}>
-              {pending.proposed_customer_message}
-            </blockquote>
-          )}
         </div>
       ) : (
         <>

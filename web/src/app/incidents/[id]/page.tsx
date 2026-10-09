@@ -67,7 +67,10 @@ export default function IncidentDetailPage() {
           )}
 
           <section className="card">
-            <h2>Resolution</h2>
+            <h2>{paused && decision ? "Proposed resolution" : "Resolution"}</h2>
+            {paused && decision && (
+              <div className="callout callout-warn">Not executed. Nothing has been sent to the customer until a reviewer approves.</div>
+            )}
             {!decision ? (
               <div className="muted">
                 {paused ? "No autonomous decision. The agent handed this case to a person." : "No decision recorded."}
@@ -86,7 +89,7 @@ export default function IncidentDetailPage() {
                     </>
                   )}
                 </dl>
-                <label>Answer to customer</label>
+                <label>{paused ? "Drafted answer to customer" : "Answer to customer"}</label>
                 <blockquote className="quote">{decision.customer_message}</blockquote>
                 <div style={{ marginTop: 12 }}>
                   <label>

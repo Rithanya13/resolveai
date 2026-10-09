@@ -44,7 +44,25 @@ def _serialize(value):
     return value
 
 
-def _response_from_state(incident_id: str, state: dict, interrupted: bool) -> dict:
+def _pending_review_from_result(result: dict):
+    """Interrupt payload from a graph.ainvoke() result (present only when the run paused)."""
+    interrupts = result.get("__interrupt__")
+    return interrupts[0].value if interrupts else None
+
+
+def _pending_review_from_snapshot(snapshot):
+    """Interrupt payload from a checkpointed snapshot.
+
+    A stored snapshot exposes pending interrupts on `snapshot.interrupts`, not
+    as an `__interrupt__` key in `snapshot.values` (that key only exists on the
+    return value of `ainvoke`). Reading the wrong one 500s every GET of a
+    paused incident.
+    """
+    return snapshot.interrupts[0].value if snapshot.interrupts else None
+
+
+def _response_from_state(incident_id: str, state: dict, pending_review) -> dict:
+    interrupted = pending_review is not None
     incident = state.get("incident")
     body = {
         "incident_id": incident_id,
@@ -63,8 +81,7 @@ def _response_from_state(incident_id: str, state: dict, interrupted: bool) -> di
         "escalation": _serialize(state.get("escalation")),
     }
     if interrupted:
-        interrupt = state["__interrupt__"][0]
-        body["pending_review"] = interrupt.value
+        body["pending_review"] = pending_review
     return body
 
 
@@ -99,7 +116,7 @@ async def submit_incident(payload: SubmitIncidentRequest, request: Request) -> d
     graph = request.app.state.graph
     result = await graph.ainvoke({"incident": incident, "trace": []}, config=config)
     request.app.state.incident_index.add(incident_id)
-    return _response_from_state(incident_id, result, interrupted=bool(result.get("__interrupt__")))
+    return _response_from_state(incident_id, result, _pending_review_from_result(result))
 
 
 @router.get("/incidents")
@@ -109,8 +126,7 @@ async def list_incidents(request: Request) -> dict:
     for incident_id in request.app.state.incident_index.list_ids():
         config = {"configurable": {"thread_id": incident_id}}
         snapshot = await graph.aget_state(config)
-        state = snapshot.values
-        out.append(_response_from_state(incident_id, state, interrupted=bool(snapshot.interrupts)))
+        out.append(_response_from_state(incident_id, snapshot.values, _pending_review_from_snapshot(snapshot)))
     return {"incidents": out}
 
 
@@ -121,7 +137,7 @@ async def get_incident(incident_id: str, request: Request) -> dict:
     snapshot = await graph.aget_state(config)
     if not snapshot.values:
         raise HTTPException(status_code=404, detail=f"No incident found with id {incident_id!r}")
-    return _response_from_state(incident_id, snapshot.values, interrupted=bool(snapshot.interrupts))
+    return _response_from_state(incident_id, snapshot.values, _pending_review_from_snapshot(snapshot))
 
 
 @router.post("/incidents/{incident_id}/approve")
@@ -136,4 +152,4 @@ async def approve_incident(incident_id: str, payload: ApprovalRequest, request: 
 
     resume_payload = payload.model_dump(exclude_none=True)
     result = await graph.ainvoke(Command(resume=resume_payload), config=config)
-    return _response_from_state(incident_id, result, interrupted=bool(result.get("__interrupt__")))
+    return _response_from_state(incident_id, result, _pending_review_from_result(result))

@@ -126,3 +126,28 @@ def test_cors_allows_the_dashboard_origin(client):
         headers={"Origin": "http://localhost:3000", "Access-Control-Request-Method": "POST"},
     )
     assert resp.headers.get("access-control-allow-origin") == "http://localhost:3000"
+
+
+def test_paused_incident_can_be_fetched_and_listed(client):
+    """Regression: GET on a paused incident used to 500 (read `__interrupt__`
+    from snapshot.values, where it never exists)."""
+    submit = client.post(
+        "/incidents",
+        json={
+            "customer_id": "cust_1004",
+            "subject": "Order never arrived, need refund",
+            "description": "My order never arrived per tracking, I want a refund immediately.",
+        },
+    ).json()
+    assert submit["status"] == "pending_human_review"
+    incident_id = submit["incident_id"]
+
+    fetched = client.get(f"/incidents/{incident_id}")
+    assert fetched.status_code == 200
+    assert fetched.json()["status"] == "pending_human_review"
+    assert fetched.json()["pending_review"]["recommended_action"] == "issue_refund"
+
+    listing = client.get("/incidents")
+    assert listing.status_code == 200
+    paused = [i for i in listing.json()["incidents"] if i["incident_id"] == incident_id]
+    assert paused and paused[0]["pending_review"]["reason"]

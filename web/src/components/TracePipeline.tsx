@@ -12,7 +12,7 @@ export function TracePipeline({ trace, paused }: { trace: string[]; paused: bool
             {i > 0 && <span className="step-arrow">→</span>}
             <span className={`step ${isPause ? "paused" : "done"}`}>
               {step}
-              {isPause ? " ⏸" : ""}
+              {isPause ? " (paused)" : ""}
             </span>
           </Fragment>
         );
