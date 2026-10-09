@@ -30,5 +30,13 @@ class Settings(BaseSettings):
     confidence_threshold: float = 0.72
     retrieval_top_k: int = 5
 
+    # Comma-separated origins allowed to call the API from a browser (the
+    # Next.js dashboard in `web/` runs on :3000 by default).
+    cors_origins: str = "http://localhost:3000"
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
 
 settings = Settings()

@@ -72,13 +72,34 @@ Mock customers to try: `cust_1001`..`cust_1004` (in `resolveai/tools/mock_data.p
 ### Docker
 
 ```bash
-docker compose up --build         # api on :8000, fake providers, in-memory store
+docker compose up --build         # api on :8000 + operator console on :3000, fake providers, in-memory store
 RESOLVEAI_VECTOR_STORE=pgvector docker compose up --build   # + real Postgres/pgvector
 ```
 
 ### Going to real providers
 
 Copy `.env.example` to `.env` and set `RESOLVEAI_LLM_PROVIDER=anthropic` (+ an API key) and/or `RESOLVEAI_EMBEDDING_PROVIDER=azure_openai` (+ Azure OpenAI credentials). Nothing else changes — same graph, same routes, same tests structure.
+
+## Operator console (`web/`)
+
+A Next.js + TypeScript dashboard for the people who supervise the agent. Still not a chat UI: it's where a reviewer sees *why* the agent did what it did, and steps in when it shouldn't act alone.
+
+| Screen | What it shows |
+|---|---|
+| **Incidents** (`/`) | Submit an incident (presets cover all three graph paths) and see every run with category, confidence, action and status. |
+| **Incident detail** (`/incidents/[id]`) | The real LangGraph execution trace, the customer-facing answer with **clickable citations** that jump to the exact policy passage or MCP tool result they came from, the confidence score against the auto-resolve threshold, and grounded vs. unsupported claims. Citations that don't map to any retrieved source are flagged in red. |
+| **Review queue** (`/review`) | Every paused run, with the reason it was escalated. Approve or reject inline; that resumes the graph via `Command(resume=...)`. For low-confidence cases with no agent proposal, the reviewer picks the action. Reviewer notes are kept for the audit trail. |
+| **Evals** (`/evals`) | Runs the labeled regression set through a fresh graph and shows category accuracy, outcome accuracy, escalation precision/recall and groundedness, plus per-case pass/fail. |
+
+```bash
+# with the API running on :8000
+cd web
+cp .env.example .env.local      # NEXT_PUBLIC_API_URL=http://localhost:8000
+npm install
+npm run dev                     # http://localhost:3000
+```
+
+Types in `web/src/lib/types.ts` mirror the Pydantic models in `resolveai/schemas.py`, so the UI renders structured fields, never parsed prose. Citation resolution (`web/src/lib/format.ts`) is unit-tested with Vitest. CI runs lint, type check, tests and a production build for the frontend in a separate job.
 
 ## API
 
@@ -88,7 +109,10 @@ Copy `.env.example` to `.env` and set `RESOLVEAI_LLM_PROVIDER=anthropic` (+ an A
 | `GET` | `/incidents` | List known incidents + status |
 | `GET` | `/incidents/{id}` | Current state of one incident |
 | `POST` | `/incidents/{id}/approve` | Resume a paused incident with a human decision (`{"approved": bool, "note": str}`) |
+| `GET` | `/evals` | Run the labeled eval set through a fresh graph; returns metrics + per-case results as JSON |
 | `GET` | `/health` | Liveness check |
+
+Incident responses include `retrieved_passages` and `tool_evidence` alongside the `decision`, so every citation can be traced to its source. CORS origins are set with `RESOLVEAI_CORS_ORIGINS` (default `http://localhost:3000`).
 
 ## Testing
 
@@ -97,7 +121,7 @@ pytest tests/unit -q          # ~30 tests, milliseconds -- stubbed MCP calls, no
 pytest tests/integration -q   # ~90s -- real MCP subprocess spawns, real FastAPI app, full graph runs
 ```
 
-45 tests total. `tests/unit` covers retrieval (BM25, vector store, RRF fusion), the deterministic fake LLM's prompt-parsing conventions, schema validation, and each graph node in isolation with stubbed dependencies. `tests/integration` covers the real MCP wire protocol, the full graph end-to-end (all three routing outcomes: auto-resolve, value-gated HITL, low-confidence HITL), and the FastAPI layer via Starlette's `TestClient`.
+48 backend tests total, plus Vitest unit tests for the frontend (`cd web && npm test`). `tests/unit` covers retrieval (BM25, vector store, RRF fusion), the deterministic fake LLM's prompt-parsing conventions, schema validation, and each graph node in isolation with stubbed dependencies. `tests/integration` covers the real MCP wire protocol, the full graph end-to-end (all three routing outcomes: auto-resolve, value-gated HITL, low-confidence HITL), and the FastAPI layer via Starlette's `TestClient`.
 
 ## Evals
 
@@ -128,4 +152,4 @@ This is a small, hand-curated regression suite that validates the graph's *routi
 
 ## Stack
 
-LangGraph (orchestration, structured routing, `interrupt()`-based HITL) · FastAPI · MCP (real tool servers, not mocked) · hybrid RAG (BM25 + vector + RRF) · Pydantic structured outputs · pgvector (production vector store option) · Docker Compose · GitHub Actions CI · pytest
+LangGraph (orchestration, structured routing, `interrupt()`-based HITL) · FastAPI · MCP (real tool servers, not mocked) · hybrid RAG (BM25 + vector + RRF) · Pydantic structured outputs · pgvector (production vector store option) · Next.js + React + TypeScript (operator console) · Docker Compose · GitHub Actions CI · pytest · Vitest

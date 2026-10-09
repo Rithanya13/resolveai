@@ -14,9 +14,20 @@ services:
       # `docker compose up` works with zero configuration.
       RESOLVEAI_VECTOR_STORE: ${RESOLVEAI_VECTOR_STORE:-memory}
       RESOLVEAI_DATABASE_URL: postgresql://resolveai:resolveai@postgres:5432/resolveai
+      RESOLVEAI_CORS_ORIGINS: ${RESOLVEAI_CORS_ORIGINS:-http://localhost:3000}
     depends_on:
       postgres:
         condition: service_healthy
+
+  web:
+    build:
+      context: ./web
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
 
   postgres:
     image: pgvector/pgvector:pg16

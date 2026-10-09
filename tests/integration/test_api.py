@@ -85,3 +85,44 @@ def test_list_incidents_includes_submitted_ones(client):
     listing = client.get("/incidents").json()
     ids = [i["incident_id"] for i in listing["incidents"]]
     assert submitted["incident_id"] in ids
+
+
+def test_response_exposes_sources_so_citations_are_traceable(client):
+    body = client.post(
+        "/incidents",
+        json={
+            "customer_id": "cust_1002",
+            "subject": "Charged twice",
+            "description": "I was charged twice for order_5002, please refund the duplicate charge.",
+        },
+    ).json()
+    assert body["incident"]["customer_id"] == "cust_1002"
+    assert body["retrieved_passages"], "retrieved policy passages should be returned"
+    assert body["tool_evidence"], "MCP tool evidence should be returned"
+
+    known_sources = {p["doc_id"] for p in body["retrieved_passages"]} | {
+        e["source_tool"] for e in body["tool_evidence"]
+    }
+    for citation in body["decision"]["citations"]:
+        assert citation in known_sources, f"citation {citation!r} does not map to any returned source"
+
+
+def test_evals_endpoint_returns_metrics(client):
+    body = client.get("/evals").json()
+    assert body["cases"] == len(body["results"]) > 0
+    for name in (
+        "category_accuracy",
+        "outcome_accuracy",
+        "escalation_precision",
+        "escalation_recall",
+        "groundedness_rate",
+    ):
+        assert 0.0 <= body["metrics"][name] <= 1.0
+
+
+def test_cors_allows_the_dashboard_origin(client):
+    resp = client.options(
+        "/incidents",
+        headers={"Origin": "http://localhost:3000", "Access-Control-Request-Method": "POST"},
+    )
+    assert resp.headers.get("access-control-allow-origin") == "http://localhost:3000"

@@ -5,6 +5,7 @@ POST   /incidents                 submit a new incident, runs the graph until
 GET    /incidents                 list known incident ids + status
 GET    /incidents/{id}            current state of one incident
 POST   /incidents/{id}/approve    resume a paused incident with a human decision
+GET    /evals                     run the labeled eval set, return metrics as JSON
 GET    /health                    liveness check
 """
 
@@ -16,6 +17,7 @@ from fastapi import APIRouter, HTTPException, Request
 from langgraph.types import Command
 from pydantic import BaseModel
 
+from resolveai.config import settings
 from resolveai.schemas import Incident
 
 router = APIRouter()
@@ -43,10 +45,18 @@ def _serialize(value):
 
 
 def _response_from_state(incident_id: str, state: dict, interrupted: bool) -> dict:
+    incident = state.get("incident")
     body = {
         "incident_id": incident_id,
         "status": "pending_human_review" if interrupted else state.get("status", "unknown"),
+        "incident": _serialize(incident),
         "trace": state.get("trace", []),
+        # Exposed so a reviewer can trace every citation in `decision` back to
+        # the exact policy passage or MCP tool result it came from.
+        "retrieved_passages": _serialize(state.get("retrieved_passages", [])),
+        "tool_evidence": _serialize(state.get("tool_evidence", [])),
+        "order_amount_usd": state.get("order_amount_usd"),
+        "confidence_threshold": settings.confidence_threshold,
         "classification": _serialize(state.get("classification")),
         "assessment": _serialize(state.get("assessment")),
         "decision": _serialize(state.get("decision")),
@@ -56,6 +66,19 @@ def _response_from_state(incident_id: str, state: dict, interrupted: bool) -> di
         interrupt = state["__interrupt__"][0]
         body["pending_review"] = interrupt.value
     return body
+
+
+@router.get("/evals")
+async def run_evals() -> dict:
+    """Run the labeled eval set through a fresh graph and return the metrics.
+
+    Uses its own graph + checkpointer (via `evals.run_evals.main`) so eval
+    threads never mix with live incidents.
+    """
+    from evals.run_evals import main as run_eval_suite
+
+    report = await run_eval_suite()
+    return report.to_dict()
 
 
 @router.get("/health")

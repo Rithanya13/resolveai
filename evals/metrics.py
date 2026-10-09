@@ -10,7 +10,7 @@ purely LLM-graded eval wouldn't even test.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
 
 @dataclass
@@ -71,6 +71,19 @@ class EvalReport:
             return 1.0
         grounded = sum(1 for r in resolved if r.grounded)
         return grounded / len(resolved)
+
+    def to_dict(self) -> dict:
+        return {
+            "cases": self.n,
+            "metrics": {
+                "category_accuracy": self.category_accuracy,
+                "outcome_accuracy": self.outcome_accuracy,
+                "escalation_precision": self.escalation_precision,
+                "escalation_recall": self.escalation_recall,
+                "groundedness_rate": self.groundedness_rate,
+            },
+            "results": [asdict(r) for r in self.results],
+        }
 
     def to_markdown(self) -> str:
         lines = [
